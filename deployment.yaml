@@ -1,0 +1,34 @@
+# ai_code_generator/deployment.yaml
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-code-generator
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ai-code-generator
+  template:
+    metadata:
+      labels:
+        app: ai-code-generator
+    spec:
+      containers:
+        - name: ai-code-generator
+          image: YOUR_DOCKERHUB_USERNAME/ai-code-generator:latest
+          ports:
+            - containerPort: 5000
+          env:
+            - name: OLLAMA_HOST
+              value: "http://ollama-service:11434"
+            - name: PORT
+              value: "5000"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ollama-service
+spec:
+  type: ExternalName
+  externalName: host.docker.internal

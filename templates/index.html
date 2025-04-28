@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Kod Üreteci</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <!-- Code syntax highlighting için -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/styles/default.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/highlight.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.8.0/languages/python.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>AI Kod Üreteci</h1>
+            <p>Ne tür bir Python kodu oluşturmak istediğinizi açıklayın</p>
+        </header>
+        
+        <div class="prompt-container">
+            <form id="codeForm">
+                <div class="input-group">
+                    <textarea id="promptInput" placeholder="Oluşturulmasını istediğiniz Python kodunu açıklayın... Örnek: 'Job sınıfını kullanarak dosya indiren bir uygulama yap'"></textarea>
+                </div>
+                
+                <div class="model-selection">
+                    <label for="modelSelect">Model Seçin:</label>
+                    <select id="modelSelect" name="model">
+                        {% for model in models %}
+                        <option value="{{ model }}">{{ model }}</option>
+                        {% endfor %}
+                    </select>
+                    <button type="button" id="refreshModelsBtn" title="Modelleri yenile">🔄</button>
+                </div>
+                
+                <button type="submit" id="generateBtn">Kod Oluştur</button>
+            </form>
+        </div>
+        
+        <div class="results" id="resultsSection" style="display: none;">
+            <div class="result-header">
+                <h2 id="codeTitle">Kod Başlığı</h2>
+            </div>
+            <div class="code-container">
+                <pre><code class="language-python" id="codeOutput">Henüz kod oluşturulmadı.</code></pre>
+                <button id="copyBtn" class="copy-btn">Kopyala</button>
+            </div>
+        </div>
+        
+        <div class="loader" id="loader" style="display: none;">
+            <div class="spinner"></div>
+            <p>Kod oluşturuluyor...</p>
+        </div>
+        
+        <footer>
+            <p>📢 <span id="ollamaStatus">Ollama durumu kontrol ediliyor...</span></p>
+        </footer>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const codeForm = document.getElementById('codeForm');
+            const promptInput = document.getElementById('promptInput');
+            const modelSelect = document.getElementById('modelSelect');
+            const generateBtn = document.getElementById('generateBtn');
+            const resultsSection = document.getElementById('resultsSection');
+            const codeTitle = document.getElementById('codeTitle');
+            const codeOutput = document.getElementById('codeOutput');
+            const copyBtn = document.getElementById('copyBtn');
+            const loader = document.getElementById('loader');
+            const ollamaStatus = document.getElementById('ollamaStatus');
+            const refreshModelsBtn = document.getElementById('refreshModelsBtn');
+            
+            // Ollama durumunu kontrol et
+            async function checkOllamaStatus() {
+                try {
+                    const response = await fetch('/models');
+                    if (response.ok) {
+                        const data = await response.json();
+                        ollamaStatus.textContent = `Ollama bağlantısı başarılı! ${data.models.length} model bulundu.`;
+                        ollamaStatus.style.color = '#2ecc71';
+                        
+                        // Model listesini güncelle
+                        updateModelList(data.models);
+                    } else {
+                        ollamaStatus.textContent = 'Ollama bağlantısı kurulamadı!';
+                        ollamaStatus.style.color = '#e74c3c';
+                    }
+                } catch (error) {
+                    ollamaStatus.textContent = `Ollama bağlantı hatası: ${error.message}`;
+                    ollamaStatus.style.color = '#e74c3c';
+                }
+            }
+            
+            // Model listesini güncelle
+            function updateModelList(models) {
+                // Mevcut seçili modeli koru
+                const currentModel = modelSelect.value;
+                
+                // Listeyi temizle
+                modelSelect.innerHTML = '';
+                
+                // Modelleri ekle
+                models.forEach(model => {
+                    const option = document.createElement('option');
+                    option.value = model;
+                    option.textContent = model;
+                    modelSelect.appendChild(option);
+                });
+                
+                // Önceki seçili modeli tekrar seç (eğer hala mevcutsa)
+                if (models.includes(currentModel)) {
+                    modelSelect.value = currentModel;
+                }
+            }
+            
+            // Sayfa yüklendiğinde Ollama durumunu kontrol et
+            checkOllamaStatus();
+            
+            // Model listesini yenile butonu
+            refreshModelsBtn.addEventListener('click', checkOllamaStatus);
+            
+            codeForm.addEventListener('submit', async function(e) {
+                e.preventDefault();
+                
+                const prompt = promptInput.value.trim();
+                if (!prompt) {
+                    alert('Lütfen bir prompt girin!');
+                    return;
+                }
+                
+                // Yükleme başla
+                loader.style.display = 'flex';
+                resultsSection.style.display = 'none';
+                generateBtn.disabled = true;
+                
+                try {
+                    const formData = new FormData();
+                    formData.append('prompt', prompt);
+                    formData.append('model', modelSelect.value);
+                    
+                    const response = await fetch('/generate', {
+                        method: 'POST',
+                        body: formData
+                    });
+                    
+                    if (!response.ok) {
+                        throw new Error('Sunucu hatası!');
+                    }
+                    
+                    const data = await response.json();
+                    
+                    // Sonuçları göster
+                    codeTitle.textContent = data.title || 'Oluşturulan Kod';
+                    codeOutput.textContent = data.code || 'Kod oluşturulamadı.';
+                    
+                    // Syntax highlighting uygula
+                    hljs.highlightElement(codeOutput);
+                    
+                    resultsSection.style.display = 'block';
+                } catch (error) {
+                    console.error('Hata:', error);
+                    alert('Kod oluşturulurken bir hata oluştu: ' + error.message);
+                } finally {
+                    // Yükleme bitir
+                    loader.style.display = 'none';
+                    generateBtn.disabled = false;
+                }
+            });
+            
+            // Kopyalama butonu
+            copyBtn.addEventListener('click', function() {
+                const codeText = codeOutput.textContent;
+                navigator.clipboard.writeText(codeText)
+                    .then(() => {
+                        const originalText = copyBtn.textContent;
+                        copyBtn.textContent = 'Kopyalandı!';
+                        setTimeout(() => {
+                            copyBtn.textContent = originalText;
+                        }, 2000);
+                    })
+                    .catch(err => {
+                        console.error('Kopyalama hatası:', err);
+                        alert('Kod kopyalanırken bir hata oluştu.');
+                    });
+            });
+        });
+    </script>
+</body>
+</html>
